@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunum Zamanlayıcı</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* TÜSEB logo renkleri */
+    --tuseb-red: #BF202F;
+    --tuseb-teal: #5ABECA;
+    --tuseb-grey: #75848C;
+
+    --bg: #0d171b;
+    --panel: #14232a;
+    --line: #26393f;
+    --text: #f1f6f7;
+    --muted: #8d9ba2;
+    --sand: var(--tuseb-teal);
+    --glass: rgba(90,190,202,0.08);
+    --accent: var(--sand);
+    --warn5: var(--tuseb-red);
+    --warn2: var(--tuseb-red);
+    --on-accent: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    overflow: hidden;
+    transition: background 1.2s ease;
+  }
+  body.phase-5 { --accent: var(--warn5); background: #1a1216; }
+  body.phase-2 { --accent: var(--warn2); background: #2a0d12; }
+  body.done    { --accent: var(--warn2); }
+
+  /* ---------- kurulum ---------- */
+  .setup {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 32px 36px; width: min(420px, calc(100vw - 32px)); text-align: center;
+  }
+  .setup h1 span { color: var(--tuseb-red); }
+  .setup h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+  .setup p  { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+  .setup label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; text-align: left; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .setup input {
+    flex: 1; font: 700 28px "JetBrains Mono", monospace; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; text-align: center; outline: none;
+  }
+  .setup input:focus { border-color: var(--sand); }
+  .unit { color: var(--muted); font-size: 15px; }
+  .presets { display: flex; gap: 8px; margin: 14px 0 22px; }
+  .presets button { flex: 1; }
+
+  button {
+    font: 600 14px Inter, sans-serif; color: var(--text);
+    background: transparent; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; cursor: pointer; transition: border-color .2s, background .2s;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { width: 100%; background: var(--sand); color: #08262b; border-color: var(--sand); font-size: 16px; padding: 14px; }
+  button.primary:hover { background: #7dcfd8; }
+  .hint { margin-top: 16px; font-size: 12px; color: var(--muted); }
+
+  /* ---------- sayaç ekranı ---------- */
+  .stage { display: none; flex-direction: column; align-items: center; gap: 2vh; width: 100%; }
+  body.running .setup, body.done .setup { display: none; }
+  body.running .stage, body.done .stage { display: flex; }
+
+  .hourglass { height: 58vh; max-height: 560px; width: auto; filter: drop-shadow(0 0 40px rgba(90,190,202,0.15)); }
+  .frame { fill: none; stroke: var(--tuseb-grey); stroke-width: 3; stroke-linejoin: round; }
+  .cap   { fill: var(--tuseb-grey); stroke: var(--tuseb-grey); stroke-width: 2; }
+  .bulb  { fill: var(--glass); }
+  .sand  { fill: var(--accent); transition: fill 1.2s ease; }
+  .stream { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 4 6; animation: fall .5s linear infinite; transition: stroke 1.2s ease; }
+  body.paused .stream, body.done .stream { visibility: hidden; }
+  @keyframes fall { to { stroke-dashoffset: -10; } }
+
+  .clock {
+    font: 700 clamp(64px, 14vw, 180px)/1 "JetBrains Mono", monospace;
+    letter-spacing: -0.03em; color: var(--text); font-variant-numeric: tabular-nums;
+  }
+  body.phase-5 .clock, body.phase-2 .clock, body.done .clock { color: var(--accent); }
+  body.phase-2 .clock { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+
+  .status { font-size: 15px; color: var(--muted); min-height: 20px; }
+
+  .controls { display: flex; gap: 10px; opacity: .35; transition: opacity .3s; }
+  .controls:hover, body.paused .controls { opacity: 1; }
+
+  /* ---------- uyarı bandı ---------- */
+  .alert {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 3vh 16px; text-align: center;
+    font: 800 clamp(32px, 7vw, 88px)/1.1 Inter, sans-serif; letter-spacing: -0.02em;
+    background: var(--accent); color: var(--on-accent);
+    transform: translateY(-110%); transition: transform .5s cubic-bezier(.2,.8,.2,1);
+    z-index: 10;
+  }
+  .alert.show { transform: translateY(0); }
+  .alert small { display: block; font: 600 clamp(14px, 2vw, 22px) Inter, sans-serif; margin-top: 6px; opacity: .8; }
+
+  .stage { transition: padding-top .5s cubic-bezier(.2,.8,.2,1); }
+  .hourglass { transition: height .5s cubic-bezier(.2,.8,.2,1); }
+  body.alerting .stage { padding-top: 24vh; }
+  body.alerting .hourglass { height: 38vh; }
+
+  .flash { position: fixed; inset: 0; background: var(--accent); opacity: 0; pointer-events: none; z-index: 5; }
+  .flash.go { animation: flash 1.2s ease-out; }
+  @keyframes flash { 0% { opacity: .55; } 100% { opacity: 0; } }
+</style>
+</head>
+<body>
+
+<div class="alert" id="alert"></div>
+<div class="flash" id="flash"></div>
+
+<section class="setup">
+  <h1><span>TÜSEB</span> Sunum Zamanlayıcı</h1>
+  <p>Sürenin son %25'inde ve son %10'unda sesli ve yazılı uyarı verilir<br>(20 dk için son 5 ve son 2 dakika).</p>
+  <label for="minutes">Toplantı süresi</label>
+  <div class="row">
+    <input id="minutes" type="number" min="1" max="600" value="20">
+    <span class="unit">dakika</span>
+  </div>
+  <div class="presets">
+    <button data-min="10">10</button>
+    <button data-min="15">15</button>
+    <button data-min="20">20</button>
+    <button data-min="30">30</button>
+    <button data-min="45">45</button>
+  </div>
+  <button class="primary" id="start">Başlat</button>
+  <div class="hint">Boşluk: duraklat / devam · F: tam ekran · R: sıfırla</div>
+</section>
+
+<section class="stage">
+  <svg class="hourglass" viewBox="0 0 200 330" aria-hidden="true">
+    <defs>
+      <clipPath id="topClip"><path d="M32,25 L168,25 C168,95 110,135 103,165 L97,165 C90,135 32,95 32,25 Z"/></clipPath>
+      <clipPath id="botClip"><path d="M97,165 L103,165 C110,195 168,235 168,305 L32,305 C32,235 90,195 97,165 Z"/></clipPath>
+    </defs>
+
+    <path class="bulb" d="M32,25 L168,25 C168,95 110,135 103,165 L97,165 C90,135 32,95 32,25 Z"/>
+    <path class="bulb" d="M97,165 L103,165 C110,195 168,235 168,305 L32,305 C32,235 90,195 97,165 Z"/>
+
+    <rect id="topSand" class="sand" clip-path="url(#topClip)" x="0" y="40" width="200" height="125"/>
+    <path id="botSand" class="sand" clip-path="url(#botClip)" d=""/>
+    <line id="stream" class="stream" x1="100" y1="165" x2="100" y2="303"/>
+
+    <path class="frame" d="M32,25 L168,25 C168,95 110,135 103,165 C110,195 168,235 168,305 L32,305 C32,235 90,195 97,165 C90,135 32,95 32,25 Z"/>
+    <rect class="cap" x="18" y="10" width="164" height="15" rx="4"/>
+    <rect class="cap" x="18" y="305" width="164" height="15" rx="4"/>
+  </svg>
+
+  <div class="clock" id="clock">20:00</div>
+  <div class="status" id="status"></div>
+
+  <div class="controls">
+    <button id="pause">Duraklat</button>
+    <button id="reset">Sıfırla</button>
+    <button id="fs">Tam ekran</button>
+  </div>
+</section>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const body = document.body;
+
+  // Uyarılar süreye oranla: 20 dk → 5 dk ve 2 dk
+  const warningRatios = [0.25, 0.10];
+  let warningMs = [];
+
+
+  // ---------- durum ----------
+  let totalMs = 0, endAt = 0, remainingAtPause = 0, paused = false, running = false, raf = 0;
+  let fired = new Set();
+
+  // ---------- ses ----------
+  let audio;
+  function unlockAudio() {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+    // Bazı tarayıcılar konuşmayı ilk kullanıcı etkileşiminde açar
+    if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+  }
+  function chime(times = 2) {
+    if (!audio) return;
+    const now = audio.currentTime;
+    for (let i = 0; i < times; i++) {
+      [880, 1320].forEach((f, j) => {
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        const t = now + i * 0.45;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(j ? 0.12 : 0.25, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+        o.connect(g).connect(audio.destination);
+        o.start(t); o.stop(t + 1);
+      });
+    }
+  }
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'tr-TR'; u.rate = 0.95; u.volume = 1;
+    const tr = speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith('tr'));
+    if (tr) u.voice = tr;
+    speechSynthesis.speak(u);
+  }
+  if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+
+  // ---------- uyarı ----------
+  // 75000 → "1 dakika 15 saniye", 300000 → "5 dakika", 30000 → "30 saniye"
+  const label = ms => {
+    const s = Math.round(ms / 1000), m = Math.floor(s / 60), sec = s % 60;
+    return [m ? `${m} dakika` : '', sec ? `${sec} saniye` : ''].filter(Boolean).join(' ');
+  };
+  let alertTimer;
+  function warn(ms) {
+    showAlert(`Son ${label(ms)}!`, 'Toparlamaya başlayın');
+    chime(2);
+    setTimeout(() => speak(`Son ${label(ms)}`), 900);
+  }
+  function showAlert(title, sub) {
+    const a = $('alert');
+    a.innerHTML = `${title}<small>${sub}</small>`;
+    a.classList.add('show'); body.classList.add('alerting');
+    const f = $('flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(hideAlert, 8000);
+  }
+  function hideAlert() {
+    $('alert').classList.remove('show'); body.classList.remove('alerting');
+  }
+
+  // ---------- çizim ----------
+  const fmt = ms => {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
+    return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  };
+
+  function drawSand(r) { // r = kalan oran (1 → 0)
+    // Üst hazne: kum 165'ten yukarı doğru, dar boğazda daha az hacim olduğu için kök ile yumuşatıldı
+    const topH = 125 * Math.pow(r, 0.7);
+    $('topSand').setAttribute('y', 165 - topH);
+    $('topSand').setAttribute('height', topH);
+    // Alt hazne: tümsek şeklinde yığılan kum
+    const p = 1 - r;
+    const base = 305, h = 118 * Math.pow(p, 0.75), peak = h * 0.22;
+    const y = base - h;
+    $('botSand').setAttribute('d',
+      `M0,${base} L0,${y + peak} Q100,${y - peak} 200,${y + peak} L200,${base} Z`);
+    $('stream').setAttribute('y2', Math.max(170, y));
+  }
+
+  function remaining() { return paused ? remainingAtPause : endAt - Date.now(); }
+
+  function tick() {
+    const rem = remaining();
+    $('clock').textContent = fmt(rem);
+    drawSand(Math.max(0, Math.min(1, rem / totalMs)));
+
+    for (const w of warningMs) {
+      if (!fired.has(w) && rem <= w) { fired.add(w); warn(w); }
+    }
+    const [first, last] = warningMs;
+    body.classList.toggle('phase-5', rem <= first && rem > last);
+    body.classList.toggle('phase-2', rem <= last && rem > 0);
+
+    if (rem <= 0) return finish();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function start() {
+    const m = parseFloat($('minutes').value);
+    if (!(m > 0)) { $('minutes').focus(); return; }
+    unlockAudio();
+    totalMs = m * 60000;
+    endAt = Date.now() + totalMs;
+    paused = false; running = true;
+    // Süre zaten uyarı eşiğinin altındaysa o uyarıyı atla
+    // Oranı al, 5 saniyeye yuvarla (20 dk → tam 5:00 ve 2:00)
+    warningMs = warningRatios.map(r => Math.max(5000, Math.round(totalMs * r / 5000) * 5000));
+    fired = new Set();
+    body.className = 'running';
+    hideAlert();
+    $('pause').textContent = 'Duraklat';
+    $('status').textContent = `${m} dakikalık sunum`;
+    cancelAnimationFrame(raf); tick();
+  }
+
+  function togglePause() {
+    if (!running) return;
+    if (paused) {
+      endAt = Date.now() + remainingAtPause; paused = false;
+      body.classList.remove('paused'); $('pause').textContent = 'Duraklat';
+      $('status').textContent = '';
+      tick();
+    } else {
+      remainingAtPause = endAt - Date.now(); paused = true;
+      cancelAnimationFrame(raf);
+      body.classList.add('paused'); $('pause').textContent = 'Devam';
+      $('status').textContent = 'Duraklatıldı';
+    }
+  }
+
+  function finish() {
+    running = false;
+    body.className = 'done';
+    $('clock').textContent = '00:00';
+    $('status').textContent = 'Süre doldu';
+    drawSand(0);
+    showAlert('Süre doldu!', 'Teşekkürler');
+    chime(3);
+    setTimeout(() => speak('Süre doldu'), 1300);
+  }
+
+  function reset() {
+    cancelAnimationFrame(raf);
+    running = false; paused = false;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    body.className = '';
+    hideAlert();
+    drawSand(1);
+  }
+
+  function fullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }
+
+  // ---------- olaylar ----------
+  $('start').onclick = start;
+  $('pause').onclick = togglePause;
+  $('reset').onclick = reset;
+  $('fs').onclick = fullscreen;
+  document.querySelectorAll('.presets button').forEach(b => b.onclick = () => { $('minutes').value = b.dataset.min; });
+  $('minutes').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+    else if (e.key === 'f' || e.key === 'F') fullscreen();
+    else if (e.key === 'r' || e.key === 'R') reset();
+  });
+
+  drawSand(1);
+})();
+</script>
+</body>
+</html>
